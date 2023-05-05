@@ -1,25 +1,103 @@
 #!/usr/bin/env node
+import process from "node:process";
 import { homedir, tmpdir } from "node:os";
 import { join, parse as parsePath } from "node:path";
 import { writeFileSync, unlinkSync, existsSync } from "node:fs";
 import { Command } from "commander";
 import chalk from "chalk";
-import gradient from "gradient-string";
 import extract from "extract-zip";
+
+import {
+  NAME,
+  DESCRIPTION,
+  BASE_URL,
+  EXERCISE_URL,
+  HOMEWORK_URL,
+  DEMO_URL,
+  DESTINATION,
+} from "./src/constants.mjs";
+import {
+  afterSuccess,
+  helpTldr,
+  programRunning,
+  tldr,
+} from "./src/logMessages.mjs";
 
 const cmd = new Command();
 
-const NAME = "dmget";
-const DESCRIPTION =
-  "A CLI helper to download Devmountain exercises, homework, and lecture demos.";
-const BASE_URL = "https://ed.devmountain.com/materials";
-const EXERCISE_URL = `${BASE_URL}/exercises`;
-const HOMEWORK_URL = `${BASE_URL}/homework`;
-const DEMO_URL = `${BASE_URL}/lectures`;
-const DESTINATION = join(homedir(), "src");
-
 let tempfile;
 let projDir;
+
+const logTask = (msg, opts = {}) => {
+  const { prefix, prefixChalk } = opts;
+  const chalk_ = prefixChalk ?? chalk.bgBlue;
+  console.log(chalk.bold(`${chalk_.black(prefix ?? " * ")} ${msg}`));
+};
+
+const logSubtask = (msg) => {
+  console.log(chalk.blue(msg));
+};
+
+const cleanup = () => {
+  if (tempfile) {
+    logTask(chalk.black("Cleaning up temporary files..."), {
+      prefix: " - ",
+      prefixChalk: chalk.bgBlack,
+    });
+    unlinkSync(tempfile);
+    console.log(chalk.black(`Removed ${tempfile}`));
+  }
+};
+
+const downloadFile = async (fileUrl) => {
+  const res = await fetch(fileUrl);
+  if (!res.ok) {
+    if (res.status === 404) {
+      throw new Error(
+        `No file exists at ${fileUrl} -- are you sure you spelled everything correctly?`
+      );
+    } else {
+      throw new Error(
+        `Failed to download ${fileUrl} with status: ${res.statusText} ${res.status}`
+      );
+    }
+  }
+  return res;
+};
+
+const writeDownloadedFile = async (response, dest) => {
+  const buffer = Buffer.from(await response.arrayBuffer());
+  writeFileSync(dest, buffer);
+};
+
+const extractZip = async (zipFile, destination) => {
+  await extract(zipFile, {
+    dir: destination,
+    onEntry: (entry) => {
+      const { fileName } = entry;
+      const pathParts = parsePath(fileName);
+      const dest = join(destination, fileName);
+
+      if (!pathParts.dir) {
+        projDir = join(destination, pathParts.name);
+      }
+
+      if (!pathParts.dir && existsSync(dest)) {
+        throw new Error(`\
+Can't extract files because ${fileName} already exists in ${abbreviateHome(
+          destination
+        )}.
+
+If you really want to overwrite it, delete ${abbreviateHome(
+          dest
+        )} and try again.
+            `);
+      }
+    },
+  });
+};
+
+const abbreviateHome = (path) => path.replace(homedir(), "~");
 
 const main = async () => {
   cmd
@@ -41,33 +119,27 @@ const main = async () => {
       outputError: (str, write) => write(str),
     })
     .exitOverride((err) => {
-      if (err.code === "commander.error") {
-        logTask("Cleaning up temporary files...");
-        unlinkSync(tempfile);
-        console.log(chalk.blue(`Removed ${tempfile}`));
+      if (err.message.includes("missing required argument")) {
+        logTask("Need help?", { prefix: " 💡 ", prefixChalk: chalk.bgBlack });
+        console.log(helpTldr);
       }
+
+      cleanup();
     })
     .action(async (slug, opts) => {
-      console.log(chalk.bold(gradient.pastel(`===> Running ${NAME}...`)));
-      await run(cmd, slug, opts);
+      console.log(programRunning);
+
+      if (slug === "tldr") {
+        console.log(tldr);
+      } else {
+        await run(cmd, slug, opts);
+      }
     });
-  cmd.parseAsync();
-};
 
-const logTask = (msg) => {
-  console.log(chalk.bold(`${chalk.bgBlue(" * ")} ${msg}`));
+  cmd.parse(process.argv);
 };
-
-const abbreviateHome = (path) => path.replace(homedir(), "~");
 
 const run = async (cmd, slug, opts) => {
-  let url = EXERCISE_URL;
-  if (opts.homework) {
-    url = HOMEWORK_URL;
-  } else if (opts.demo) {
-    url = DEMO_URL;
-  }
-
   // Guard against passing --solution and --demo at the same time
   if (opts.demo && opts.solution) {
     cmd.error(
@@ -79,76 +151,35 @@ const run = async (cmd, slug, opts) => {
     `Setting up ${opts.demo ? "demo" : "starter"} code for ${chalk.green(slug)}`
   );
 
+  const url = opts.demo
+    ? DEMO_URL
+    : opts.homework
+    ? HOMEWORK_URL
+    : EXERCISE_URL;
   const filename = opts.solution ? `${slug}-solution.zip` : `${slug}.zip`;
   const fileUrl = `${url}/${filename}`;
 
   // Attempt to download zip file
   try {
-    const response = await fetch(fileUrl);
-    if (!response.ok) {
-      if (response.status === 404) {
-        throw new Error(`File not found.
-Are you sure you spelled '${slug}' correctly?
-`);
-      } else {
-        throw new Error(
-          `Failed to download ${fileUrl} with status [${response.statusText} ${response.status}]`
-        );
-      }
-    }
-
-    console.log(chalk.blue(`Downloading ${fileUrl}`));
+    const response = await downloadFile(fileUrl);
+    logSubtask(`Downloading ${fileUrl}`);
 
     // Save zip file to temporary location
-    const buffer = Buffer.from(await response.arrayBuffer());
     tempfile = join(tmpdir(), filename);
-    writeFileSync(tempfile, buffer);
-    console.log(chalk.blue(`Temporarily saved file to ${tempfile}`));
+    await writeDownloadedFile(response, tempfile);
+    logSubtask(`Temporarily saved file to ${tempfile}`);
 
     // Extract zip file to destination
     const destination = join(opts.path, opts.homework ? "homework" : "");
-    console.log(
-      chalk.blue(`Extracting files to ${abbreviateHome(destination)}`)
-    );
-    await extract(tempfile, {
-      dir: destination,
-      onEntry: (entry) => {
-        const pathParts = parsePath(entry.fileName);
-        const dest = join(destination, entry.fileName);
-        if (!pathParts.dir) {
-          projDir = join(destination, pathParts.name);
-          if (existsSync(dest)) {
-            throw new Error(`Can't extract files because ${
-              entry.fileName
-            } already exists in ${abbreviateHome(destination)}.
-  If you really want to overwrite it, delete ${abbreviateHome(
-    dest
-  )} and try again.
-            `);
-          }
-        }
-      },
-    });
+    await extractZip(tempfile, destination);
+    logSubtask(`Extracting files to ${abbreviateHome(destination)}`);
   } catch (err) {
     cmd.error(err.message);
   }
 
-  console.log(chalk.bold(`${chalk.bgGreen(" ✔ ")} Success!`));
-  console.log(`${chalk.yellow(
-    "•"
-  )} To cd into the project directory and open it in VS Code, run:
-
-      cd ${abbreviateHome(projDir)}
-      code .
-`);
-  console.log(
-    `${chalk.yellow(
-      "•"
-    )} Download the solution by running the same command with the --solution flag:
-
-      ${NAME} ${slug} ${opts.homework ? "--homework" : ""} --solution
-`
-  );
+  console.log(chalk.bold(`${chalk.bgGreen(" ✔ ")} Success!\n`));
+  console.log(afterSuccess(projDir));
+  cleanup();
 };
 
 main();
