@@ -5,7 +5,7 @@
   "main": "index.js",
   "author": "Ashley Trinh <itsashley@hey.com>",
   "license": "MIT",
-  "bin": "./index.js",
+  "bin": "./index.mjs",
   "dependencies": {
     "chalk": "^5.2.0",
     "commander": "^10.0.1",
