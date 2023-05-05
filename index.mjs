@@ -178,7 +178,7 @@ const run = async (cmd, slug, opts) => {
   }
 
   console.log(chalk.bold(`${chalk.bgGreen(" ✔ ")} Success!\n`));
-  console.log(afterSuccess(projDir));
+  console.log(afterSuccess(abbreviateHome(projDir)));
   cleanup();
 };
 
