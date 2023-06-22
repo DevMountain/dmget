@@ -1,20 +1,20 @@
 #!/usr/bin/env node
-import process from "node:process";
+import chalk from "chalk";
+import { Command } from "commander";
+import extract from "extract-zip";
+import { existsSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, parse as parsePath } from "node:path";
-import { writeFileSync, unlinkSync, existsSync } from "node:fs";
-import { Command } from "commander";
-import chalk from "chalk";
-import extract from "extract-zip";
+import process from "node:process";
 
 import {
-  NAME,
-  DESCRIPTION,
   BASE_URL,
+  DEMO_URL,
+  DESCRIPTION,
+  DESTINATION,
   EXERCISE_URL,
   HOMEWORK_URL,
-  DEMO_URL,
-  DESTINATION,
+  NAME,
 } from "./src/constants.mjs";
 import {
   afterSuccess,
@@ -26,7 +26,6 @@ import {
 const cmd = new Command();
 
 let tempfile;
-let projDir;
 
 const logTask = (msg, opts = {}) => {
   const { prefix, prefixChalk } = opts;
@@ -78,18 +77,12 @@ const extractZip = async (zipFile, destination) => {
       const pathParts = parsePath(fileName);
       const dest = join(destination, fileName);
 
-      if (!pathParts.dir) {
-        projDir = join(destination, pathParts.name);
-      }
-
       if (!pathParts.dir && existsSync(dest)) {
         throw new Error(`\
-Can't extract files because ${fileName} already exists in ${abbreviateHome(
-          destination
-        )}.
+Can't extract files because ${abbreviateHome(destination)} already exists.
 
 If you really want to overwrite it, delete ${abbreviateHome(
-          dest
+          destination
         )} and try again.
             `);
       }
@@ -170,15 +163,20 @@ const run = async (cmd, slug, opts) => {
     logSubtask(`Temporarily saved file to ${tempfile}`);
 
     // Extract zip file to destination
-    const destination = join(opts.path, opts.homework ? "homework" : "");
+    const destination = join(
+      opts.path,
+      opts.demo ? "demos" : opts.homework ? "homework" : "",
+      slug
+    );
     await extractZip(tempfile, destination);
     logSubtask(`Extracting files to ${abbreviateHome(destination)}`);
+
+    console.log(chalk.bold(`${chalk.bgGreen(" ✔ ")} Success!\n`));
+    console.log(afterSuccess(abbreviateHome(destination)));
   } catch (err) {
     cmd.error(err.message);
   }
 
-  console.log(chalk.bold(`${chalk.bgGreen(" ✔ ")} Success!\n`));
-  console.log(afterSuccess(abbreviateHome(projDir)));
   cleanup();
 };
 
