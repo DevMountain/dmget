@@ -1,6 +1,6 @@
 {
   "name": "dmget",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "A CLI helper to download project code at Devmountain",
   "main": "index.js",
   "author": "Ashley Trinh <itsashley@hey.com>",
