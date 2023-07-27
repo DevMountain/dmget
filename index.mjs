@@ -166,7 +166,7 @@ const run = async (cmd, slug, opts) => {
     const destination = join(
       opts.path,
       opts.demo ? "demos" : opts.homework ? "homework" : "",
-      slug
+      opts.solution ? `${slug}-solution` : slug
     );
     await extractZip(tempfile, destination);
     logSubtask(`Extracting files to ${abbreviateHome(destination)}`);
