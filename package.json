@@ -14,5 +14,8 @@
   },
   "devDependencies": {
     "prettier": "^2.8.8"
+  },
+  "scripts": {
+    "test": "echo \"No tests (yet) but hopefully they'll be here soon...\" && exit 0"
   }
 }
