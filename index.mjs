@@ -4,7 +4,7 @@ import { Command } from "commander";
 import extract from "extract-zip";
 import { existsSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join, parse as parsePath } from "node:path";
+import * as path from "node:path";
 import process from "node:process";
 
 import {
@@ -74,8 +74,8 @@ const extractZip = async (zipFile, destination) => {
     dir: destination,
     onEntry: (entry) => {
       const { fileName } = entry;
-      const pathParts = parsePath(fileName);
-      const dest = join(destination, fileName);
+      const pathParts = path.parse(fileName);
+      const dest = path.join(destination, fileName);
 
       if (!pathParts.dir && existsSync(dest)) {
         throw new Error(`\
@@ -90,7 +90,23 @@ If you really want to overwrite it, delete ${abbreviateHome(
   });
 };
 
-const abbreviateHome = (path) => path.replace(homedir(), "~");
+const abbreviateHome = (p) => p.replace(homedir(), "~");
+const formatPath = (p) => {
+  const filepath = path.normalize(p);
+  // Check if this is a win32-formatted path; if it is, replace '\\' with '\\\\'.
+  // '\' is an escape character so it disappears whenever we print it to the terminal.
+  // For example, 'c:\\blah\\blah' will look like:
+  //   c:\blah\blah
+  //
+  // You might be thinking, "Since most of our students use Git BASH, why not just
+  // use path.posix.normalize and be done with it?" *Most* is the operative term here.
+  // Plus, it's safer Node decide which path separator to use than implement OS support
+  // ourselves.
+  //
+  // That said, using replace() is definitely a hack and is super brittle but I couldn't figure
+  // out a better way to do this.
+  return filepath.includes("\\") ? filepath.replace(/\\/g, "\\\\") : filepath;
+};
 
 const main = async () => {
   cmd
@@ -158,21 +174,24 @@ const run = async (cmd, slug, opts) => {
     logSubtask(`Downloading ${fileUrl}`);
 
     // Save zip file to temporary location
-    tempfile = join(tmpdir(), filename);
+    tempfile = path.join(tmpdir(), filename);
     await writeDownloadedFile(response, tempfile);
     logSubtask(`Temporarily saved file to ${tempfile}`);
 
     // Extract zip file to destination
-    const destination = join(
+    const destination = path.join(
       opts.path,
       opts.demo ? "demos" : opts.homework ? "homework" : "",
       opts.solution ? `${slug}-solution` : slug
     );
     await extractZip(tempfile, destination);
-    logSubtask(`Extracting files to ${abbreviateHome(destination)}`);
+
+    logSubtask(
+      `Extracting files to ${formatPath(abbreviateHome(destination))}`
+    );
 
     console.log(chalk.bold(`${chalk.bgGreen(" ✔ ")} Success!\n`));
-    console.log(afterSuccess(abbreviateHome(destination)));
+    console.log(afterSuccess(`${formatPath(abbreviateHome(destination))}`));
   } catch (err) {
     cmd.error(err.message);
   }
