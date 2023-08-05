@@ -16,8 +16,9 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v3
         with:
-          node-version: '17.x'
-      - run: yarn
+          node-version: '17'
+          cache: 'yarn'
+      - run: yarn install --frozen-lockfile
       - run: yarn test
 
   publish-gpr:
@@ -30,10 +31,13 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v3
         with:
-          node-version: '17.x'
-          registry-url: 'https://npm.pkg.github.com/'
-          scope: '@DevMountain'
-      - run: yarn
-      - run: yarn publish
+          node-version: '17'
+      - name: 'Setup .yarnrc.yml'
+        run: |
+          yarn config set npmScopes.DevMountain.npmRegistryServer "https://npm.pkg.github.com"
+          yarn config set npmScopes.DevMountain.npmAlwaysAuth true
+          yarn config set npmScopes.DevMountain.npmAuthToken $NPM_AUTH_TOKEN
         env:
-          NODE_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
+          NPM_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: yarn install --frozen-lockfile
+      - run: yarn publish
